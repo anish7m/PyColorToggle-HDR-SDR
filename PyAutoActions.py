@@ -301,6 +301,8 @@ class MainWindow(QMainWindow):
     update_signal = Signal()
     refresh_signal = Signal()
     display_change_signal = Signal()
+    information_signal = Signal(str)
+    ask_box_signal = Signal()
 
     def __init__(self):
         super().__init__()
@@ -309,6 +311,8 @@ class MainWindow(QMainWindow):
         self.update_signal.connect(self.update_box, Qt.ConnectionType.QueuedConnection)
         self.refresh_signal.connect(self.refresh_box, Qt.ConnectionType.QueuedConnection)
         self.display_change_signal.connect(self.prewarm_window, Qt.ConnectionType.QueuedConnection)
+        self.information_signal.connect(self.information_box, Qt.ConnectionType.QueuedConnection)
+        self.ask_box_signal.connect(self.ask_box, Qt.ConnectionType.QueuedConnection)
         self.setAcceptDrops(True)
         self.dropped_file_path = None
         self.current_file_path = None
@@ -340,8 +344,8 @@ class MainWindow(QMainWindow):
         self.language_config = configparser.ConfigParser()
         self.language_config.read(r"Resources/ui/text.ini")
 
-        self.current_version = 146  # Version Checking Number.
-        self.setWindowTitle("PyAutoActions v1.4.6")
+        self.current_version = 147  # Version Checking Number.
+        self.setWindowTitle("PyAutoActions v1.4.7")
         self.setWindowIcon(QIcon(os.path.abspath(r"Resources\main.ico")))
         self.setGeometry(100, 100, 600, 400)
 
@@ -776,6 +780,27 @@ class MainWindow(QMainWindow):
         self.monitor.reverse_toggle = status
         self.reverse_status = status
 
+    def on_ask_information_finished(self, result):
+        if result == QMessageBox.StandardButton.Yes:
+            self.refresh_rate_switching_action.setChecked(True)
+
+    def ask_box(self):
+        information_message_box = QMessageBox(self)
+        information_message_box.setIcon(QMessageBox.Icon.Information)
+        information_message_box.setWindowTitle("PyAutoActions")
+        information_message_box.setWindowIcon(QIcon(r"Resources\main.ico"))
+        information_message_box.setFixedSize(400, 200)
+        information_message_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        information_message_box.setText(f"{self.exception_msg}")
+        winsound.MessageBeep()
+        screen = app.primaryScreen()
+        screen_geometry = screen.availableGeometry()
+        x = (screen_geometry.width() - information_message_box.width()) // 2
+        y = (screen_geometry.height() - information_message_box.height()) // 2
+        information_message_box.move(x, y)
+        information_message_box.finished.connect(self.on_ask_information_finished)
+        information_message_box.exec()
+
     def warning_box(self):
         warning_message_box = QMessageBox(self)
         warning_message_box.setIcon(QMessageBox.Icon.Warning)
@@ -925,6 +950,12 @@ class MainWindow(QMainWindow):
                 return
 
     def command_args_entry(self):
+        last_item = self.list_widget.currentItem()
+        selected_text = os.path.basename(last_item.text())
+        current_command = self.get_command_arg(selected_text)
+        if current_command is not None:
+            preloaded_msg = "Currently set executable command args are: " + current_command
+            self.information_signal.emit(preloaded_msg)
         command_args = QInputDialog(self)
         command_args.setWindowTitle("PyAutoActions")
         command_args.setLabelText("Enter Command Args:")
@@ -940,19 +971,28 @@ class MainWindow(QMainWindow):
         command_args.show()  # Non-blocking
 
     def refresh_rate_entry(self):
-        refresh_dialog = QInputDialog(self)
-        refresh_dialog.setWindowTitle("PyAutoActions")
-        refresh_dialog.setLabelText("Enter Target Refresh Rate Value:")
-        refresh_dialog.setWindowIcon(QIcon(r"Resources\main.ico"))
-        refresh_dialog.setFixedSize(400, 200)
-        refresh_dialog.textValueSelected.connect(self.save_refresh_info)
-        winsound.MessageBeep()
-        screen = app.primaryScreen()
-        screen_geometry = screen.availableGeometry()
-        x = (screen_geometry.width() - refresh_dialog.width()) // 2
-        y = (screen_geometry.height() - refresh_dialog.height()) // 2
-        refresh_dialog.move(x, y)
-        refresh_dialog.show()  # Non-blocking
+        if self.refresh_rate_switching_action.isChecked():
+            last_item = self.list_widget.currentItem()
+            selected_text = os.path.basename(last_item.text())
+            current_refresh_rate = self.get_current_refresh(selected_text)
+            if current_refresh_rate is not None:
+                self.information_signal.emit("Currently set refresh rate is: " + current_refresh_rate + "hz")
+            refresh_dialog = QInputDialog(self)
+            refresh_dialog.setWindowTitle("PyAutoActions")
+            refresh_dialog.setLabelText("Enter Target Refresh Rate Value:")
+            refresh_dialog.setWindowIcon(QIcon(r"Resources\main.ico"))
+            refresh_dialog.setFixedSize(400, 200)
+            refresh_dialog.textValueSelected.connect(self.save_refresh_info)
+            winsound.MessageBeep()
+            screen = app.primaryScreen()
+            screen_geometry = screen.availableGeometry()
+            x = (screen_geometry.width() - refresh_dialog.width()) // 2
+            y = (screen_geometry.height() - refresh_dialog.height()) // 2
+            refresh_dialog.move(x, y)
+            refresh_dialog.show()  # Non-blocking
+        else:
+            self.exception_msg = "Refresh Rate Switching Is Disabled Do You Want To Enable It?"
+            self.ask_box_signal.emit()
 
     def exit_confirm_box(self, message):
         exit_message_box = QMessageBox(self)
@@ -970,6 +1010,22 @@ class MainWindow(QMainWindow):
         exit_message_box.move(x, y)
         result = exit_message_box.exec()
         return result
+
+    def information_box(self, message):
+        information_message_box = QMessageBox(self)
+        information_message_box.setIcon(QMessageBox.Icon.Information)
+        information_message_box.setStandardButtons(QMessageBox.StandardButton.Ok)
+        information_message_box.setWindowTitle("PyAutoActions")
+        information_message_box.setWindowIcon(QIcon(r"Resources\main.ico"))
+        information_message_box.setFixedSize(400, 200)
+        information_message_box.setText(message)
+        winsound.MessageBeep()
+        screen = app.primaryScreen()
+        screen_geometry = screen.availableGeometry()
+        x = (screen_geometry.width() - information_message_box.width()) // 2
+        y = (screen_geometry.height() - information_message_box.height()) // 2
+        information_message_box.move(x, y)
+        information_message_box.exec()
 
     def save_command_args_info(self, command_args):
         if command_args:
@@ -1184,6 +1240,20 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.exception_msg = f"on_action_triggered: {e}"
             self.warning_signal.emit()
+
+    def get_current_refresh(self, exe_name):
+        json_path = Path(self.get_appdata_path("refresh_rate_data.json"))
+        if not json_path.exists():
+            return None
+        try:
+            with json_path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+            return data.get(exe_name)
+
+        except Exception as e:
+            self.exception_msg = f"get_current_refresh: {e}"
+            self.warning_signal.emit()
+            return None
 
     def get_command_arg(self, exe_name):
         json_path = Path(self.get_appdata_path("command_args_data.json"))

@@ -1,6 +1,6 @@
-# PyAutoActions
+# PyColorToggle-HDR-SDR
 
-PyAutoActions automates HDR management for your games and applications, enabling and disabling HDR based on the process status. It's designed to work seamlessly with low system impact and integrates perfectly with [ForceAutoHDR](https://github.com/7gxycn08/ForceAutoHDR) for enhanced compatibility.
+PyColorToggle-HDR-SDR automates HDR management for your games and applications, enabling and disabling HDR based on the process status. It's designed to work seamlessly with low system impact and integrates perfectly with [ForceAutoHDR](https://github.com/7gxycn08/ForceAutoHDR) for enhanced compatibility.
 
 ## Features
 
@@ -39,16 +39,16 @@ PyAutoActions automates HDR management for your games and applications, enabling
 
 ![winget](https://github.com/7gxycn08/ForceAutoHDR/assets/121936658/4dd2df30-da47-4dcd-9219-396709fa6f3b)
 
-To start using PyAutoActions, download the latest release from our [Releases page](https://github.com/7gxycn08/PyAutoActions/releases). Install it using the setup file and run the application.
+To start using PyColorToggle-HDR-SDR, download the latest release from our [Releases page](https://github.com/anish7m/PyColorToggle-HDR-SDR/releases). Install it using the setup file and run the application.
 
 Alternatively you can install and update via [Windows Package Manager (Winget)](https://docs.microsoft.com/en-us/windows/package-manager/winget/):
 
 
-`winget install 7gxycn08.PyAutoActions`
+`winget install anish7m.PyColorToggle-HDR-SDR`
 
 1. **Add Games**: Use the GUI to add the executable path of your games.
 2. **Automatic HDR Management**: HDR will enable when a game/app starts and disable upon its closure.
-3. **Startup Option**: Enable running PyAutoActions at system boot via the tray icon context menu.
+3. **Startup Option**: Enable running PyColorToggle-HDR-SDR at system boot via the tray icon context menu.
 4. **Enhanced Compatibility**: Use [ForceAutoHDR](https://github.com/7gxycn08/ForceAutoHDR) for AutoHDR in unsupported games.
 5. **Pre-Launch HDR Activation**: Launch games/apps from the system tray to ensure HDR is enabled beforehand when games require HDR to be enabled before launch.
 
@@ -61,7 +61,7 @@ Alternatively you can install and update via [Windows Package Manager (Winget)](
 
 ## Contributing
 
-Your contributions make PyAutoActions better! We welcome pull requests, feature requests, and any other contributions. If you're looking to add new features or improve existing ones, please feel free to contribute.
+Your contributions make PyColorToggle-HDR-SDR better! We welcome pull requests, feature requests, and any other contributions. If you're looking to add new features or improve existing ones, please feel free to contribute.
 
 ## TODO
 
@@ -70,7 +70,7 @@ Your contributions make PyAutoActions better! We welcome pull requests, feature 
 
 ## Copy Right
 
-Copyright 2026 7gxycn08@github.com
+Copyright 2026 anish7m@github.com
 
 Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.

@@ -26,6 +26,487 @@ import psutil
 
 KERNEL_32 = ctypes.WinDLL("kernel32")
 USER_32 = ctypes.WinDLL("user32")
+MSCMS = ctypes.WinDLL("Mscms.dll", use_last_error=True)
+APP_DISPLAY_NAME = "PyColorToggle-HDR-SDR"
+APP_VERSION_TEXT = "1.0.0"
+APP_VERSION_NUMBER = 100
+APP_EXE_NAME = "PyColorToggle-HDR-SDR.exe"
+APP_SHORTCUT_NAME = APP_EXE_NAME.replace(".exe", ".lnk")
+APPDATA_DIR_NAME = "PyAutoActions"
+LEGACY_SHORTCUT_NAME = "PyAutoActions.lnk"
+GITHUB_REPO = "anish7m/PyColorToggle-HDR-SDR"
+GITHUB_URL = f"https://github.com/{GITHUB_REPO}"
+CURRENT_VERSION_URL = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/current_version.txt"
+DISPLAY_DEVICE_ACTIVE = 0x00000001
+DISPLAY_DEVICE_PRIMARY_DEVICE = 0x00000004
+WCS_PROFILE_MANAGEMENT_SCOPE_SYSTEM_WIDE = 0
+WCS_PROFILE_MANAGEMENT_SCOPE_CURRENT_USER = 1
+CPT_ICC = 0
+CPST_NONE = 4
+CPST_STANDARD_DISPLAY_COLOR_MODE = 7
+CPST_EXTENDED_DISPLAY_COLOR_MODE = 8
+DISPLAY_COLOR_PROFILE_SUBTYPES = (
+    CPST_NONE,
+    CPST_STANDARD_DISPLAY_COLOR_MODE,
+    CPST_EXTENDED_DISPLAY_COLOR_MODE,
+)
+QDC_ONLY_ACTIVE_PATHS = 0x00000002
+DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME = 1
+S_OK = 0
+HWND_BROADCAST = 0xFFFF
+SMTO_ABORTIFHUNG = 0x0002
+WM_SETTINGCHANGE = 0x001A
+WM_DISPLAYCHANGE = 0x007E
+DWORD_PTR = ctypes.c_ulonglong if ctypes.sizeof(ctypes.c_void_p) == 8 else wintypes.DWORD
+
+
+def get_appdata_path(filename):
+    appdata_dir = os.environ['APPDATA']
+    full_path = os.path.join(appdata_dir, APPDATA_DIR_NAME)
+
+    if not os.path.exists(full_path):
+        os.makedirs(full_path)
+
+    return os.path.join(full_path, filename)
+
+
+class DisplayDevice(ctypes.Structure):
+    _fields_ = [
+        ("cb", wintypes.DWORD),
+        ("DeviceName", wintypes.WCHAR * 32),
+        ("DeviceString", wintypes.WCHAR * 128),
+        ("StateFlags", wintypes.DWORD),
+        ("DeviceID", wintypes.WCHAR * 128),
+        ("DeviceKey", wintypes.WCHAR * 128),
+    ]
+
+
+class LUID(ctypes.Structure):
+    _fields_ = [
+        ("LowPart", wintypes.DWORD),
+        ("HighPart", wintypes.LONG),
+    ]
+
+
+class DisplayInfo:
+    def __init__(self, device_name, adapter_id=None, source_id=None):
+        self.device_name = device_name
+        self.adapter_id = adapter_id
+        self.source_id = source_id
+
+
+class DisplayConfigRational(ctypes.Structure):
+    _fields_ = [
+        ("Numerator", wintypes.UINT),
+        ("Denominator", wintypes.UINT),
+    ]
+
+
+class DisplayConfigPathSourceInfo(ctypes.Structure):
+    _fields_ = [
+        ("adapterId", LUID),
+        ("id", wintypes.UINT),
+        ("modeInfoIdx", wintypes.UINT),
+        ("statusFlags", wintypes.UINT),
+    ]
+
+
+class DisplayConfigPathTargetInfo(ctypes.Structure):
+    _fields_ = [
+        ("adapterId", LUID),
+        ("id", wintypes.UINT),
+        ("modeInfoIdx", wintypes.UINT),
+        ("outputTechnology", wintypes.UINT),
+        ("rotation", wintypes.UINT),
+        ("scaling", wintypes.UINT),
+        ("refreshRate", DisplayConfigRational),
+        ("scanLineOrdering", wintypes.UINT),
+        ("targetAvailable", wintypes.BOOL),
+        ("statusFlags", wintypes.UINT),
+    ]
+
+
+class DisplayConfigPathInfo(ctypes.Structure):
+    _fields_ = [
+        ("sourceInfo", DisplayConfigPathSourceInfo),
+        ("targetInfo", DisplayConfigPathTargetInfo),
+        ("flags", wintypes.UINT),
+    ]
+
+
+class DisplayConfig2DRegion(ctypes.Structure):
+    _fields_ = [
+        ("cx", wintypes.UINT),
+        ("cy", wintypes.UINT),
+    ]
+
+
+class DisplayConfigVideoSignalInfo(ctypes.Structure):
+    _fields_ = [
+        ("pixelRate", ctypes.c_ulonglong),
+        ("hSyncFreq", DisplayConfigRational),
+        ("vSyncFreq", DisplayConfigRational),
+        ("activeSize", DisplayConfig2DRegion),
+        ("totalSize", DisplayConfig2DRegion),
+        ("videoStandard", wintypes.UINT),
+        ("scanLineOrdering", wintypes.UINT),
+    ]
+
+
+class PointL(ctypes.Structure):
+    _fields_ = [
+        ("x", wintypes.LONG),
+        ("y", wintypes.LONG),
+    ]
+
+
+class DisplayConfigTargetMode(ctypes.Structure):
+    _fields_ = [
+        ("targetVideoSignalInfo", DisplayConfigVideoSignalInfo),
+    ]
+
+
+class DisplayConfigSourceMode(ctypes.Structure):
+    _fields_ = [
+        ("width", wintypes.UINT),
+        ("height", wintypes.UINT),
+        ("pixelFormat", wintypes.UINT),
+        ("position", PointL),
+    ]
+
+
+class DisplayConfigModeInfoUnion(ctypes.Union):
+    _fields_ = [
+        ("targetMode", DisplayConfigTargetMode),
+        ("sourceMode", DisplayConfigSourceMode),
+    ]
+
+
+class DisplayConfigModeInfo(ctypes.Structure):
+    _fields_ = [
+        ("infoType", wintypes.UINT),
+        ("id", wintypes.UINT),
+        ("adapterId", LUID),
+        ("u", DisplayConfigModeInfoUnion),
+    ]
+
+
+class DisplayConfigDeviceInfoHeader(ctypes.Structure):
+    _fields_ = [
+        ("type", wintypes.UINT),
+        ("size", wintypes.UINT),
+        ("adapterId", LUID),
+        ("id", wintypes.UINT),
+    ]
+
+
+class DisplayConfigSourceDeviceName(ctypes.Structure):
+    _fields_ = [
+        ("header", DisplayConfigDeviceInfoHeader),
+        ("viewGdiDeviceName", wintypes.WCHAR * 32),
+    ]
+
+
+class ColorProfileReloader:
+    def __init__(self):
+        USER_32.SendMessageTimeoutW.argtypes = [
+            wintypes.HWND,
+            wintypes.UINT,
+            wintypes.WPARAM,
+            wintypes.LPARAM,
+            wintypes.UINT,
+            wintypes.UINT,
+            ctypes.POINTER(DWORD_PTR),
+        ]
+        USER_32.SendMessageTimeoutW.restype = wintypes.LPARAM
+
+        USER_32.GetDisplayConfigBufferSizes.argtypes = [
+            wintypes.UINT,
+            ctypes.POINTER(wintypes.UINT),
+            ctypes.POINTER(wintypes.UINT),
+        ]
+        USER_32.GetDisplayConfigBufferSizes.restype = wintypes.LONG
+
+        USER_32.QueryDisplayConfig.argtypes = [
+            wintypes.UINT,
+            ctypes.POINTER(wintypes.UINT),
+            ctypes.POINTER(DisplayConfigPathInfo),
+            ctypes.POINTER(wintypes.UINT),
+            ctypes.POINTER(DisplayConfigModeInfo),
+            ctypes.c_void_p,
+        ]
+        USER_32.QueryDisplayConfig.restype = wintypes.LONG
+
+        USER_32.DisplayConfigGetDeviceInfo.argtypes = [
+            ctypes.POINTER(DisplayConfigDeviceInfoHeader),
+        ]
+        USER_32.DisplayConfigGetDeviceInfo.restype = wintypes.LONG
+
+        KERNEL_32.LocalFree.argtypes = [ctypes.c_void_p]
+        KERNEL_32.LocalFree.restype = ctypes.c_void_p
+
+        self.get_display_default_func = MSCMS.ColorProfileGetDisplayDefault
+        self.get_display_default_func.argtypes = [
+            wintypes.DWORD,
+            LUID,
+            wintypes.UINT,
+            wintypes.DWORD,
+            wintypes.DWORD,
+            ctypes.POINTER(wintypes.LPWSTR),
+        ]
+        self.get_display_default_func.restype = ctypes.c_long
+
+        self.set_display_default_func = MSCMS.ColorProfileSetDisplayDefaultAssociation
+        self.set_display_default_func.argtypes = [
+            wintypes.DWORD,
+            wintypes.LPCWSTR,
+            wintypes.DWORD,
+            wintypes.DWORD,
+            LUID,
+            wintypes.UINT,
+        ]
+        self.set_display_default_func.restype = ctypes.c_long
+
+        self.get_default_profile_size_func = MSCMS.WcsGetDefaultColorProfileSize
+        self.get_default_profile_size_func.argtypes = [
+            wintypes.DWORD,
+            wintypes.LPCWSTR,
+            wintypes.DWORD,
+            wintypes.DWORD,
+            wintypes.DWORD,
+            ctypes.POINTER(wintypes.DWORD),
+        ]
+        self.get_default_profile_size_func.restype = wintypes.BOOL
+
+        self.get_default_profile_func = MSCMS.WcsGetDefaultColorProfile
+        self.get_default_profile_func.argtypes = [
+            wintypes.DWORD,
+            wintypes.LPCWSTR,
+            wintypes.DWORD,
+            wintypes.DWORD,
+            wintypes.DWORD,
+            wintypes.DWORD,
+            wintypes.LPWSTR,
+        ]
+        self.get_default_profile_func.restype = wintypes.BOOL
+
+        self.set_default_profile_func = MSCMS.WcsSetDefaultColorProfile
+        self.set_default_profile_func.argtypes = [
+            wintypes.DWORD,
+            wintypes.LPCWSTR,
+            wintypes.DWORD,
+            wintypes.DWORD,
+            wintypes.DWORD,
+            wintypes.LPCWSTR,
+        ]
+        self.set_default_profile_func.restype = wintypes.BOOL
+
+    @staticmethod
+    def get_primary_display_names():
+        primary_names = set()
+        index = 0
+        while True:
+            display_device = DisplayDevice()
+            display_device.cb = ctypes.sizeof(DisplayDevice)
+            if not USER_32.EnumDisplayDevicesW(None, index, ctypes.byref(display_device), 0):
+                break
+
+            if (
+                display_device.StateFlags & DISPLAY_DEVICE_ACTIVE
+                and display_device.StateFlags & DISPLAY_DEVICE_PRIMARY_DEVICE
+            ):
+                primary_names.add(display_device.DeviceName)
+
+            index += 1
+
+        return primary_names
+
+    @staticmethod
+    def get_display_devices(primary_only):
+        primary_names = ColorProfileReloader.get_primary_display_names()
+        path_count = wintypes.UINT()
+        mode_count = wintypes.UINT()
+        result = USER_32.GetDisplayConfigBufferSizes(
+            QDC_ONLY_ACTIVE_PATHS,
+            ctypes.byref(path_count),
+            ctypes.byref(mode_count),
+        )
+        if result != S_OK:
+            return ColorProfileReloader.get_gdi_display_devices(primary_only, primary_names)
+
+        paths = (DisplayConfigPathInfo * path_count.value)()
+        modes = (DisplayConfigModeInfo * mode_count.value)()
+        result = USER_32.QueryDisplayConfig(
+            QDC_ONLY_ACTIVE_PATHS,
+            ctypes.byref(path_count),
+            paths,
+            ctypes.byref(mode_count),
+            modes,
+            None,
+        )
+        if result != S_OK:
+            return ColorProfileReloader.get_gdi_display_devices(primary_only, primary_names)
+
+        devices = []
+        for index in range(path_count.value):
+            source_info = paths[index].sourceInfo
+            source_name = DisplayConfigSourceDeviceName()
+            source_name.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME
+            source_name.header.size = ctypes.sizeof(DisplayConfigSourceDeviceName)
+            source_name.header.adapterId = source_info.adapterId
+            source_name.header.id = source_info.id
+            result = USER_32.DisplayConfigGetDeviceInfo(ctypes.byref(source_name.header))
+            if result != S_OK:
+                continue
+
+            device_name = source_name.viewGdiDeviceName
+            if primary_only and device_name not in primary_names:
+                continue
+
+            devices.append(DisplayInfo(device_name, source_info.adapterId, source_info.id))
+
+        return devices
+
+    @staticmethod
+    def get_gdi_display_devices(primary_only, primary_names):
+        devices = []
+        index = 0
+        while True:
+            display_device = DisplayDevice()
+            display_device.cb = ctypes.sizeof(DisplayDevice)
+            if not USER_32.EnumDisplayDevicesW(None, index, ctypes.byref(display_device), 0):
+                break
+
+            if display_device.StateFlags & DISPLAY_DEVICE_ACTIVE:
+                if not primary_only or display_device.DeviceName in primary_names:
+                    devices.append(DisplayInfo(display_device.DeviceName))
+
+            index += 1
+
+        return devices
+
+    def get_default_profile(self, device_name, scope, profile_subtype):
+        profile_size = wintypes.DWORD()
+        if not self.get_default_profile_size_func(
+            scope,
+            device_name,
+            CPT_ICC,
+            profile_subtype,
+            0,
+            ctypes.byref(profile_size),
+        ):
+            return None
+
+        buffer_length = max(1, profile_size.value // ctypes.sizeof(wintypes.WCHAR))
+        profile_name = ctypes.create_unicode_buffer(buffer_length)
+        if not self.get_default_profile_func(
+            scope,
+            device_name,
+            CPT_ICC,
+            profile_subtype,
+            0,
+            profile_size.value,
+            profile_name,
+        ):
+            return None
+
+        return profile_name.value
+
+    def get_display_default_profile(self, display_info, scope, profile_subtype):
+        if display_info.adapter_id is None:
+            return None
+
+        profile_name = wintypes.LPWSTR()
+        result = self.get_display_default_func(
+            scope,
+            display_info.adapter_id,
+            display_info.source_id,
+            CPT_ICC,
+            profile_subtype,
+            ctypes.byref(profile_name),
+        )
+        if result != S_OK or not profile_name:
+            return None
+
+        try:
+            return profile_name.value
+        finally:
+            KERNEL_32.LocalFree(profile_name)
+
+    def find_default_profile(self, display_info):
+        scopes = (
+            WCS_PROFILE_MANAGEMENT_SCOPE_CURRENT_USER,
+            WCS_PROFILE_MANAGEMENT_SCOPE_SYSTEM_WIDE,
+        )
+        for profile_subtype in DISPLAY_COLOR_PROFILE_SUBTYPES:
+            for scope in scopes:
+                profile_name = self.get_display_default_profile(display_info, scope, profile_subtype)
+                if profile_name:
+                    return profile_name, profile_subtype
+
+        for profile_subtype in DISPLAY_COLOR_PROFILE_SUBTYPES:
+            for scope in scopes:
+                profile_name = self.get_default_profile(display_info.device_name, scope, profile_subtype)
+                if profile_name:
+                    return profile_name, profile_subtype
+
+        return None, None
+
+    def set_display_default_profile(self, display_info, profile_name, profile_subtype):
+        if display_info.adapter_id is None:
+            return False
+
+        return self.set_display_default_func(
+            WCS_PROFILE_MANAGEMENT_SCOPE_CURRENT_USER,
+            profile_name,
+            CPT_ICC,
+            profile_subtype,
+            display_info.adapter_id,
+            display_info.source_id,
+        ) == S_OK
+
+    @staticmethod
+    def broadcast_display_refresh():
+        result = DWORD_PTR()
+        for message in (WM_SETTINGCHANGE, WM_DISPLAYCHANGE):
+            USER_32.SendMessageTimeoutW(
+                HWND_BROADCAST,
+                message,
+                0,
+                0,
+                SMTO_ABORTIFHUNG,
+                1000,
+                ctypes.byref(result),
+            )
+
+    def reload_current_defaults(self, primary_only):
+        devices = self.get_display_devices(primary_only)
+        if not devices:
+            raise RuntimeError("No active display devices were found.")
+
+        failed = []
+        for display_info in devices:
+            profile_name, profile_subtype = self.find_default_profile(display_info)
+            if not profile_name:
+                continue
+
+            if self.set_display_default_profile(display_info, profile_name, profile_subtype):
+                continue
+
+            if not self.set_default_profile_func(
+                WCS_PROFILE_MANAGEMENT_SCOPE_CURRENT_USER,
+                display_info.device_name,
+                CPT_ICC,
+                profile_subtype,
+                0,
+                profile_name,
+            ):
+                failed.append(f"{display_info.device_name}: {ctypes.get_last_error()}")
+
+        if failed:
+            raise RuntimeError("Failed to reload ICC calibration: " + "; ".join(failed))
+
+        self.broadcast_display_refresh()
 
 
 class ProcessCheckEntry32(ctypes.Structure):
@@ -47,7 +528,7 @@ class ProcessMonitor(QWidget):
     finished = Signal()
     notification = Signal(bool)
 
-    def __init__(self, process_list, is_refresh):
+    def __init__(self, process_list, is_refresh, is_color_profile):
         super().__init__()
         self.pause = None
         self.delay = None
@@ -61,10 +542,12 @@ class ProcessMonitor(QWidget):
         # noinspection SpellCheckingInspection
         self.noti_state = None
         self.is_refresh = is_refresh
+        self.is_color_profile = is_color_profile
         self.current_refresh_rate = None
         self.ENUM_CURRENT_SETTINGS = -1
         self.CDS_UPDATE_REGISTRY = 0x01
         self.DISPLAY_CHANGE_SUCCESSFUL = 0
+        self.color_profile_reloader = ColorProfileReloader()
 
         self.finished.connect(self.on_finished_show_msg, Qt.ConnectionType.QueuedConnection)
         self.process_thread = QThread()
@@ -72,11 +555,11 @@ class ProcessMonitor(QWidget):
 
         self.hdr_switch = ctypes.CDLL(r"Dependency\HDRSwitch.dll")
         self.SetGlobalHDRState = self.hdr_switch.SetGlobalHDRState
-        self.SetGlobalHDRState.arg_types = [ctypes.c_bool]
+        self.SetGlobalHDRState.argtypes = [ctypes.c_bool]
         self.SetGlobalHDRState.restype = None
 
         self.SetPrimaryHDRState = self.hdr_switch.SetHDRonPrimary
-        self.SetPrimaryHDRState.arg_types = [ctypes.c_bool]
+        self.SetPrimaryHDRState.argtypes = [ctypes.c_bool]
         self.SetPrimaryHDRState.restype = None
 
         self.is_hdr_running = self.hdr_switch.GetGlobalHDRState
@@ -84,14 +567,7 @@ class ProcessMonitor(QWidget):
 
     @staticmethod
     def get_appdata_path(filename):
-        appdata_dir = os.environ['APPDATA']
-        app_dir = 'PyAutoActions'
-        full_path = os.path.join(appdata_dir, app_dir)
-
-        if not os.path.exists(full_path):
-            os.makedirs(full_path)
-
-        return os.path.join(full_path, filename)
+        return get_appdata_path(filename)
 
     def process_monitor(self):
         while not self.shutting_down:
@@ -183,23 +659,22 @@ class ProcessMonitor(QWidget):
             else:
                 self.SetGlobalHDRState(enable)
 
+            if self.is_color_profile:
+                self.color_profile_reloader.reload_current_defaults(self.primary_monitor)
+
         except Exception as e:
             self.exception_msg = f"toggle_hdr: {e}"
             self.finished.emit()
 
     def check_json_data(self):
         json_path = self.get_appdata_path("refresh_rate_data.json")
-        with open(json_path) as f:
+        with open(json_path, encoding="utf-8") as f:
             data = json.load(f)
-        json_text = json.dumps(data)
-        if self.main_process in json_text:
-            return True
-        else:
-            return False
+        return self.main_process in data
 
     def get_refresh_from_json(self):
         json_path = self.get_appdata_path("refresh_rate_data.json")
-        with open(json_path) as f:
+        with open(json_path, encoding="utf-8") as f:
             data = json.load(f)
 
         refresh_rate = data[self.main_process]
@@ -242,6 +717,7 @@ class ProcessMonitor(QWidget):
 
     # noinspection PyTypeChecker
     def is_process_running(self, process_name: str) -> bool:
+        h_snapshot = None
         try:
             # Take a snapshot of all processes
             h_snapshot = KERNEL_32.CreateToolhelp32Snapshot(0x00000002, 0)
@@ -261,12 +737,14 @@ class ProcessMonitor(QWidget):
                     if not KERNEL_32.Process32Next(h_snapshot, ctypes.byref(entry)):
                         break
 
-            KERNEL_32.CloseHandle(h_snapshot)
             return found
         except Exception as e:
             self.exception_msg = f"is_process_running {e}"
             self.finished.emit()
             return False
+        finally:
+            if h_snapshot and h_snapshot != wintypes.HANDLE(-1).value:
+                KERNEL_32.CloseHandle(h_snapshot)
 
     def on_finished_show_msg(self):
         warning_message_box = QMessageBox()
@@ -344,8 +822,8 @@ class MainWindow(QMainWindow):
         self.language_config = configparser.ConfigParser()
         self.language_config.read(r"Resources/ui/text.ini")
 
-        self.current_version = 147  # Version Checking Number.
-        self.setWindowTitle("PyAutoActions v1.4.7")
+        self.current_version = APP_VERSION_NUMBER  # Version Checking Number.
+        self.setWindowTitle(f"{APP_DISPLAY_NAME} v{APP_VERSION_TEXT}")
         self.setWindowIcon(QIcon(os.path.abspath(r"Resources\main.ico")))
         self.setGeometry(100, 100, 600, 400)
 
@@ -370,6 +848,11 @@ class MainWindow(QMainWindow):
         self.refresh_rate_switching_action.setCheckable(True)
         self.refresh_rate_switching_action.triggered.connect(self.save_update_settings)
 
+        self.apply_color_profile_action = QAction(self.language_config["UI_TEXT"]["apply_color_profile_action"],
+                                                  self.file_menu)
+        self.apply_color_profile_action.setCheckable(True)
+        self.apply_color_profile_action.triggered.connect(self.save_update_settings)
+
         self.file_menu.addSeparator()
 
         self.about_in_menu_bar = QAction(QIcon(r"Resources\about.ico"),
@@ -379,7 +862,7 @@ class MainWindow(QMainWindow):
                                           self.language_config["UI_TEXT"]["exit_from_menu_bar"], self)
         self.exit_from_menu_bar.triggered.connect(self.close_tray_icon)
         self.file_menu.addActions([self.pause_switching, self.check_for_update_action, self.notifications_action,
-                                   self.refresh_rate_switching_action,
+                                   self.refresh_rate_switching_action, self.apply_color_profile_action,
                                    self.about_in_menu_bar, self.exit_from_menu_bar])
 
         self.monitor_menu = self.menu_bar.addMenu(self.language_config["UI_TEXT"]["monitor_menu"])
@@ -474,7 +957,7 @@ class MainWindow(QMainWindow):
         self.menu.setWindowFlags(self.menu.windowFlags() | Qt.WindowType.FramelessWindowHint)
 
         self.tray_icon = QSystemTrayIcon(self)
-        self.tray_icon.setToolTip("PyAutoActions")
+        self.tray_icon.setToolTip("PyColorToggle-HDR-SDR")
         self.tray_icon.setIcon(QIcon(os.path.abspath(r"Resources\main.ico")))
         self.tray_icon.activated.connect(self.tray_icon_activated)
         self.tray_icon.setContextMenu(self.menu)
@@ -519,13 +1002,15 @@ class MainWindow(QMainWindow):
         notify = self.settings.value("notifications", defaultValue=True, type=bool)
         pause = self.settings.value("pause_switching", defaultValue=False, type=bool)
         refresh = self.settings.value("refresh_rate_switching", defaultValue=True, type=bool)
+        apply_color_profile = self.settings.value("apply_color_profile", defaultValue=True, type=bool)
 
         self.pause_switching.setChecked(bool(pause))
         self.check_for_update_action.setChecked(bool(update))
         self.notifications_action.setChecked(bool(notify))
         self.refresh_rate_switching_action.setChecked(bool(refresh))
+        self.apply_color_profile_action.setChecked(bool(apply_color_profile))
 
-        self.monitor = ProcessMonitor(self.process_list, refresh)
+        self.monitor = ProcessMonitor(self.process_list, refresh, apply_color_profile)
 
         self.monitor_thread.run = self.monitor.process_monitor
         self.monitor_thread.start()
@@ -670,14 +1155,15 @@ class MainWindow(QMainWindow):
         self.move(frame_geom.topLeft())  # Position the window
 
     def check_for_update(self):
-        update_url = "https://raw.githubusercontent.com/7gxycn08/PyAutoActions/main/current_version.txt"
         try:
-            with urllib.request.urlopen(update_url) as response:
+            with urllib.request.urlopen(CURRENT_VERSION_URL) as response:
                 content = response.read().decode().strip()
 
             number = int(content)
             if self.current_version < number:
-                self.update_msg = f"PyAutoActions v{'.'.join(str(number))} Update Available.\n\n Open releases page?"
+                self.update_msg = (
+                    f"{APP_DISPLAY_NAME} v{'.'.join(str(number))} Update Available.\n\n Open releases page?"
+                )
                 self.update_signal.emit()
 
         except Exception as e:
@@ -706,6 +1192,14 @@ class MainWindow(QMainWindow):
         else:
             self.settings.setValue("refresh_rate_switching", False)
             self.monitor.is_refresh = False
+
+        if self.apply_color_profile_action.isChecked():
+            self.settings.setValue("apply_color_profile", True)
+            self.monitor.is_color_profile = True
+        else:
+            self.settings.setValue("apply_color_profile", False)
+            self.monitor.is_color_profile = False
+
         if self.pause_switching.isChecked():
             self.settings.setValue("pause_switching", True)
             self.monitor.pause = True
@@ -835,7 +1329,7 @@ class MainWindow(QMainWindow):
 
     def on_update_box_finished(self, result):  # noqa
         if result == QMessageBox.StandardButton.Yes:
-            subprocess.Popen("start https://github.com/7gxycn08/PyAutoActions/releases",
+            subprocess.Popen(f"start {GITHUB_URL}/releases",
                              shell=True, creationflags=subprocess.CREATE_NEW_CONSOLE)
 
     def refresh_box(self):
@@ -901,13 +1395,12 @@ class MainWindow(QMainWindow):
             data = {f"{exe_name}": f"{pid}"}  # new or updated values
             # Step 1: Load existing data if file exists
             if file_path.exists():
-                with open(file_path, "r") as f:
+                with open(file_path, "r", encoding="utf-8") as f:
                     existing_data = json.load(f)
             else:
                 existing_data = {}
 
-            existing_data.update(data)
-            if exe_name in existing_data.items():
+            if exe_name in existing_data:
                 return
             else:
                 handle = self.find_window_by_pid(pid)
@@ -919,7 +1412,7 @@ class MainWindow(QMainWindow):
                 existing_data.update(data)
 
                 # Step 3: Save back to file
-                with open(file_path, "w") as f:
+                with open(file_path, "w", encoding="utf-8") as f:
                     json.dump(existing_data, f, indent=4)
 
     def resume_entry(self):
@@ -928,15 +1421,13 @@ class MainWindow(QMainWindow):
             pid = self.find_pid_by_name(exe_name)
             json_path = self.get_appdata_path("suspend_data.json")
             file_path = Path(json_path)
-            data = {f"{exe_name}": f"{pid}"}  # new or updated values
             # Step 1: Load existing data if file exists
             if file_path.exists():
-                with open(file_path, "r") as f:
+                with open(file_path, "r", encoding="utf-8") as f:
                     existing_data = json.load(f)
             else:
                 existing_data = {}
 
-            existing_data.update(data)
             if exe_name in existing_data:
                 handle = self.find_window_by_pid(pid)
                 self.resume_process(pid)
@@ -944,7 +1435,7 @@ class MainWindow(QMainWindow):
                 self.found_windows = []
                 self.suspend_pid = None
                 del existing_data[exe_name]
-                with open(file_path, "w") as f:
+                with open(file_path, "w", encoding="utf-8") as f:
                     json.dump(existing_data, f, indent=4)
             else:
                 return
@@ -1284,15 +1775,13 @@ class MainWindow(QMainWindow):
     def remove_start_shortcut(self):
         if self.already_added_shortcut():
             try:
-                exe_name = "PyAutoActions"
-                shortcut_name = exe_name + '.lnk'
-
                 shell = win32com.client.Dispatch("WScript.Shell")
                 startup_folder = shell.SpecialFolders("Startup")
-                shortcut_path = os.path.join(startup_folder, shortcut_name)
 
-                if os.path.exists(shortcut_path):
-                    os.remove(shortcut_path)
+                for shortcut_name in (APP_SHORTCUT_NAME, LEGACY_SHORTCUT_NAME):
+                    shortcut_path = os.path.join(startup_folder, shortcut_name)
+                    if os.path.exists(shortcut_path):
+                        os.remove(shortcut_path)
 
             except Exception as e:
                 self.exception_msg = f"remove_start_shortcut: {e}"
@@ -1304,12 +1793,9 @@ class MainWindow(QMainWindow):
 
     def already_added_shortcut(self):
         try:
-            exe_name = "PyAutoActions"
-            shortcut_name = exe_name + '.lnk'
-
             shell = win32com.client.Dispatch("WScript.Shell")
             startup_folder = shell.SpecialFolders("Startup")
-            shortcut_path = os.path.join(startup_folder, shortcut_name)
+            shortcut_path = os.path.join(startup_folder, APP_SHORTCUT_NAME)
 
             if os.path.exists(shortcut_path):
                 return True
@@ -1322,18 +1808,25 @@ class MainWindow(QMainWindow):
     def add_to_startup(self):
         if not self.already_added_shortcut():
             try:
-                executable_name = "PyAutoActions.exe"
-                icon_path = fr"{os.getcwd()}\Resources\main.ico"
-
-                current_path = os.path.join(os.getcwd(), executable_name)
+                current_path = (
+                    sys.executable
+                    if getattr(sys, "frozen", False)
+                    else os.path.join(os.getcwd(), APP_EXE_NAME)
+                )
+                working_directory = os.path.dirname(current_path)
+                icon_path = os.path.join(working_directory, "Resources", "main.ico")
 
                 shell = win32com.client.Dispatch("WScript.Shell")
                 startup_folder = shell.SpecialFolders("Startup")
-                shortcut_path = os.path.join(startup_folder, executable_name.replace('.exe', '.lnk'))
+                legacy_shortcut_path = os.path.join(startup_folder, LEGACY_SHORTCUT_NAME)
+                shortcut_path = os.path.join(startup_folder, APP_SHORTCUT_NAME)
+
+                if os.path.exists(legacy_shortcut_path):
+                    os.remove(legacy_shortcut_path)
 
                 shortcut = shell.CreateShortcut(shortcut_path)
                 shortcut.TargetPath = current_path
-                shortcut.WorkingDirectory = os.getcwd()
+                shortcut.WorkingDirectory = working_directory
                 shortcut.IconLocation = icon_path
                 shortcut.save()
 
@@ -1343,7 +1836,7 @@ class MainWindow(QMainWindow):
 
     @staticmethod
     def about_page():
-        subprocess.Popen("start https://github.com/7gxycn08/PyAutoActions",
+        subprocess.Popen(f"start {GITHUB_URL}",
                          shell=True, creationflags=subprocess.CREATE_NEW_CONSOLE)
 
     def tray_icon_activated(self, reason):
@@ -1476,14 +1969,7 @@ class MainWindow(QMainWindow):
 
     @staticmethod
     def get_appdata_path(filename):
-        appdata_dir = os.environ['APPDATA']
-        app_dir = 'PyAutoActions'
-        full_path = os.path.join(appdata_dir, app_dir)
-
-        if not os.path.exists(full_path):
-            os.makedirs(full_path)
-
-        return os.path.join(full_path, filename)
+        return get_appdata_path(filename)
 
     def save_config(self):
         try:
